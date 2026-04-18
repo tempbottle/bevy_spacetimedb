@@ -2,16 +2,20 @@ use crate::{
     AddMessageChannelAppExtensions, StdbConnectedMessage, StdbConnection,
     StdbConnectionErrorMessage, StdbDisconnectedMessage,
 };
+use bevy::prelude::World;
 use bevy::{
     app::{App, Plugin},
     platform::collections::HashMap,
     prelude::Resource,
 };
-use std::marker::PhantomData;
 use spacetimedb_sdk::{Compression, DbConnectionBuilder, DbContext};
+use std::marker::PhantomData;
 use std::{
     any::{Any, TypeId},
-    sync::{Arc, Mutex, mpsc::{channel, Sender}},
+    sync::{
+        Arc, Mutex,
+        mpsc::{Sender, channel},
+    },
     thread::JoinHandle,
 };
 
@@ -35,7 +39,9 @@ pub struct StdbPluginConfig<
 impl<
     C: spacetimedb_sdk::__codegen::DbConnection<Module = M> + DbContext + Send + Sync + 'static,
     M: spacetimedb_sdk::__codegen::SpacetimeModule<DbConnection = C> + 'static,
-> Resource for StdbPluginConfig<C, M> {}
+> Resource for StdbPluginConfig<C, M>
+{
+}
 
 /// Stores plugin data (table/reducer registrations) for delayed connection
 struct DelayedPluginData<
@@ -44,15 +50,24 @@ struct DelayedPluginData<
 > {
     message_senders: Arc<Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>>,
     #[allow(clippy::type_complexity)]
-    table_registers: Arc<Mutex<Vec<
-        Box<dyn Fn(&StdbPlugin<C, M>, &mut App, &'static <C as DbContext>::DbView) + Send + Sync>,
-    >>>,
+    table_registers: Arc<
+        Mutex<
+            Vec<
+                Box<
+                    dyn Fn(&StdbPlugin<C, M>, &mut World, &'static <C as DbContext>::DbView)
+                        + Send
+                        + Sync,
+                >,
+            >,
+        >,
+    >,
     #[allow(clippy::type_complexity)]
-    reducer_registers: Arc<Mutex<Vec<Box<dyn Fn(&mut App, &<C as DbContext>::Reducers) + Send + Sync>>>>,
+    reducer_registers:
+        Arc<Mutex<Vec<Box<dyn Fn(&mut World, &<C as DbContext>::Reducers) + Send + Sync>>>>,
 }
 
 /// Connect to SpacetimeDB with the given token (for delayed connection mode)
-/// 
+///
 /// Call this from an exclusive system (system with `world: &mut World` parameter)
 /// after OAuth completes to establish the connection with the token.
 pub fn connect_with_token<
@@ -62,16 +77,18 @@ pub fn connect_with_token<
     world: &mut bevy::prelude::World,
     token: Option<String>,
 ) {
-    let config = world.remove_resource::<StdbPluginConfig<C, M>>()
+    let config = world
+        .remove_resource::<StdbPluginConfig<C, M>>()
         .expect("StdbPluginConfig not found - did you call with_delayed_connect()?");
-    
-    let plugin_data = world.remove_non_send_resource::<DelayedPluginData<C, M>>()
+
+    let plugin_data = world
+        .remove_non_send_resource::<DelayedPluginData<C, M>>()
         .expect("DelayedPluginData not found");
-    
+
     let send_connected = config.send_connected.clone();
     let send_disconnected = config.send_disconnected.clone();
     let send_connect_error = config.send_connect_error.clone();
-    
+
     let conn = DbConnectionBuilder::<M>::new()
         .with_database_name(config.module_name)
         .with_uri(config.uri)
@@ -104,7 +121,7 @@ pub fn connect_with_token<
     // NOW register tables and reducers with the actual connection!
     // Create a temporary plugin with the stored message senders
     let temp_plugin = StdbPlugin::<C, M> {
-        module_name: None,
+        database_name: None,
         uri: None,
         token: None,
         run_fn: None,
@@ -116,18 +133,18 @@ pub fn connect_with_token<
         reducer_registers: Arc::new(Mutex::new(Vec::new())),
         procedure_registers: Arc::new(Mutex::new(Vec::new())),
     };
-    
+
     // Register tables with the real connection
     let table_regs = plugin_data.table_registers.lock().unwrap();
     for table_register in table_regs.iter() {
-        table_register(&temp_plugin, unsafe { &mut *(world as *mut _ as *mut App) }, conn.db());
+        table_register(&temp_plugin, world, conn.db());
     }
     drop(table_regs);
-    
+
     // Register reducers
     let reducer_regs = plugin_data.reducer_registers.lock().unwrap();
     for reducer_register in reducer_regs.iter() {
-        reducer_register(unsafe { &mut *(world as *mut _ as *mut App) }, conn.reducers());
+        reducer_register(world, conn.reducers());
     }
     drop(reducer_regs);
 
@@ -140,26 +157,34 @@ pub struct StdbPlugin<
     C: spacetimedb_sdk::__codegen::DbConnection<Module = M> + DbContext,
     M: spacetimedb_sdk::__codegen::SpacetimeModule<DbConnection = C>,
 > {
-    module_name: Option<String>,
+    database_name: Option<String>,
     uri: Option<String>,
     token: Option<String>,
     run_fn: Option<fn(&C) -> JoinHandle<()>>,
     compression: Option<Compression>,
     light_mode: bool,
-    delayed_connect: bool,  // NEW: Skip immediate connection
+    delayed_connect: bool, // NEW: Skip immediate connection
 
     // Stores Senders for registered table messages.
     pub(crate) message_senders: Arc<Mutex<HashMap<TypeId, Box<dyn Any + Send + Sync>>>>,
     #[allow(clippy::type_complexity)]
-    pub(crate) table_registers: Arc<Mutex<Vec<
-        Box<dyn Fn(&StdbPlugin<C, M>, &mut App, &'static <C as DbContext>::DbView) + Send + Sync>,
-    >>>,
+    pub(crate) table_registers: Arc<
+        Mutex<
+            Vec<
+                Box<
+                    dyn Fn(&StdbPlugin<C, M>, &mut World, &'static <C as DbContext>::DbView)
+                        + Send
+                        + Sync,
+                >,
+            >,
+        >,
+    >,
     #[allow(clippy::type_complexity)]
     pub(crate) reducer_registers:
-        Arc<Mutex<Vec<Box<dyn Fn(&mut App, &<C as DbContext>::Reducers) + Send + Sync>>>>,
+        Arc<Mutex<Vec<Box<dyn Fn(&mut World, &<C as DbContext>::Reducers) + Send + Sync>>>>,
     #[allow(clippy::type_complexity)]
     pub(crate) procedure_registers:
-        Arc<Mutex<Vec<Box<dyn Fn(&mut App, &<C as DbContext>::Procedures) + Send + Sync>>>>,
+        Arc<Mutex<Vec<Box<dyn Fn(&mut World, &<C as DbContext>::Procedures) + Send + Sync>>>>,
 }
 
 impl<
@@ -169,13 +194,13 @@ impl<
 {
     fn default() -> Self {
         Self {
-            module_name: Default::default(),
+            database_name: Default::default(),
             uri: None,
             token: None,
             run_fn: None,
             compression: Some(Compression::default()),
             light_mode: false,
-            delayed_connect: false,  // NEW: Default to immediate connection
+            delayed_connect: false, // NEW: Default to immediate connection
 
             message_senders: Arc::new(Mutex::default()),
             table_registers: Arc::new(Mutex::new(Vec::default())),
@@ -200,7 +225,7 @@ impl<
 
     /// Set the name or identity of the remote module.
     pub fn with_module_name(mut self, name: impl Into<String>) -> Self {
-        self.module_name = Some(name.into());
+        self.database_name = Some(name.into());
         self
     }
 
@@ -269,7 +294,7 @@ impl<
         self.uri
             .clone()
             .expect("No uri set for StdbPlugin. Set it with the with_uri() function");
-        self.module_name.clone().expect(
+        self.database_name.clone().expect(
             "No module name set for StdbPlugin. Set it with the with_module_name() function",
         );
 
@@ -284,7 +309,7 @@ impl<
         if self.delayed_connect {
             // Store configuration AND table/reducer registrations for later connection
             app.insert_resource(StdbPluginConfig::<C, M> {
-                module_name: self.module_name.clone().unwrap(),
+                module_name: self.database_name.clone().unwrap(),
                 uri: self.uri.clone().unwrap(),
                 run_fn: self.run_fn.expect("No run function specified!"),
                 compression: self.compression.unwrap_or_default(),
@@ -294,7 +319,7 @@ impl<
                 send_connect_error,
                 _phantom: PhantomData,
             });
-            
+
             // Clone the Arc pointers to share the data with connect_with_token
             let plugin_for_later = DelayedPluginData::<C, M> {
                 table_registers: Arc::clone(&self.table_registers),
@@ -302,13 +327,13 @@ impl<
                 message_senders: Arc::clone(&self.message_senders),
             };
             app.insert_non_send_resource(plugin_for_later);
-            
+
             return; // Skip connection - it will be created later via connect_with_token
         }
 
         // FIXME App should not crash if intial connection fails.
         let conn = DbConnectionBuilder::<M>::new()
-            .with_database_name(self.module_name.clone().unwrap())
+            .with_database_name(self.database_name.clone().unwrap())
             .with_uri(self.uri.clone().unwrap())
             .with_token(self.token.clone())
             .with_compression(self.compression.unwrap_or_default())
@@ -342,13 +367,13 @@ impl<
         {
             let table_regs = self.table_registers.lock().unwrap();
             for table_register in table_regs.iter() {
-                table_register(self, app, conn.db());
+                table_register(self, app.world_mut(), conn.db());
             }
         }
         {
             let reducer_regs = self.reducer_registers.lock().unwrap();
             for reducer_register in reducer_regs.iter() {
-                reducer_register(app, conn.reducers());
+                reducer_register(app.world_mut(), conn.reducers());
             }
         }
 

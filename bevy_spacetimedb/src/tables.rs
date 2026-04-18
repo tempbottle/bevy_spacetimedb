@@ -3,7 +3,7 @@ use std::{
     sync::mpsc::{Sender, channel},
 };
 
-use bevy::app::App;
+use bevy::prelude::World;
 use spacetimedb_sdk::{__codegen as spacetime_codegen, Table, TableWithPrimaryKey};
 
 use crate::AddMessageChannelAppExtensions;
@@ -83,35 +83,34 @@ impl<
     }
 
     ///Registers a table for the bevy application with the specified messages in the `messages` parameter.
-    pub fn add_partial_table<TRow, TTable, F>(
-        self,
-        accessor: F,
-        messages: TableMessages,
-    ) -> Self
+    pub fn add_partial_table<TRow, TTable, F>(self, accessor: F, messages: TableMessages) -> Self
     where
         TRow: Send + Sync + Clone + 'static,
         TTable: Table<Row = TRow> + TableWithPrimaryKey<Row = TRow>,
         F: 'static + Send + Sync + Fn(&'static C::DbView) -> TTable,
     {
         // A closure that sets up messages for the table
-        let register = move |plugin: &Self, app: &mut App, db: &'static C::DbView| {
+        let register = move |plugin: &Self, world: &mut World, db: &'static C::DbView| {
             let table = accessor(db);
             if messages.insert {
-                plugin.on_insert(app, &table);
+                plugin.on_insert(world, &table);
             }
             if messages.delete {
-                plugin.on_delete(app, &table);
+                plugin.on_delete(world, &table);
             }
             if messages.update {
-                plugin.on_update(app, &table);
+                plugin.on_update(world, &table);
             }
             if messages.update && messages.insert {
-                plugin.on_insert_update(app, &table);
+                plugin.on_insert_update(world, &table);
             }
         };
 
         // Store this table, and later when the plugin is built, call them on .
-        self.table_registers.lock().unwrap().push(Box::new(register));
+        self.table_registers
+            .lock()
+            .unwrap()
+            .push(Box::new(register));
 
         self
     }
@@ -138,23 +137,26 @@ impl<
         F: 'static + Send + Sync + Fn(&'static C::DbView) -> TTable,
     {
         // A closure that sets up messages for the table
-        let register = move |plugin: &Self, app: &mut App, db: &'static C::DbView| {
+        let register = move |plugin: &Self, world: &mut World, db: &'static C::DbView| {
             let table = accessor(db);
             if messages.insert {
-                plugin.on_insert(app, &table);
+                plugin.on_insert(world, &table);
             }
             if messages.delete {
-                plugin.on_delete(app, &table);
+                plugin.on_delete(world, &table);
             }
         };
         // Store this table, and later when the plugin is built, call them on .
-        self.table_registers.lock().unwrap().push(Box::new(register));
+        self.table_registers
+            .lock()
+            .unwrap()
+            .push(Box::new(register));
 
         self
     }
 
     /// Register a Bevy message of type InsertMessage<TRow> for the `on_insert` message on the provided table.
-    fn on_insert<TRow>(&self, app: &mut App, table: &impl Table<Row = TRow>) -> &Self
+    fn on_insert<TRow>(&self, world: &mut World, table: &impl Table<Row = TRow>) -> &Self
     where
         TRow: Send + Sync + Clone + 'static,
     {
@@ -166,7 +168,7 @@ impl<
             .entry(type_id)
             .or_insert_with(|| {
                 let (send, recv) = channel::<InsertMessage<TRow>>();
-                app.add_message_channel(recv);
+                world.add_message_channel(recv);
                 Box::new(send)
             })
             .downcast_ref::<Sender<InsertMessage<TRow>>>()
@@ -182,7 +184,7 @@ impl<
     }
 
     /// Register a Bevy message of type DeleteMessage<TRow> for the `on_delete` message on the provided table.
-    fn on_delete<TRow>(&self, app: &mut App, table: &impl Table<Row = TRow>) -> &Self
+    fn on_delete<TRow>(&self, world: &mut World, table: &impl Table<Row = TRow>) -> &Self
     where
         TRow: Send + Sync + Clone + 'static,
     {
@@ -193,7 +195,7 @@ impl<
             .entry(type_id)
             .or_insert_with(|| {
                 let (send, recv) = channel::<DeleteMessage<TRow>>();
-                app.add_message_channel(recv);
+                world.add_message_channel(recv);
                 Box::new(send)
             })
             .downcast_ref::<Sender<DeleteMessage<TRow>>>()
@@ -209,7 +211,7 @@ impl<
     }
 
     /// Register a Bevy message of type UpdateMessage<TRow> for the `on_update` message on the provided table.
-    fn on_update<TRow, TTable>(&self, app: &mut App, table: &TTable) -> &Self
+    fn on_update<TRow, TTable>(&self, world: &mut World, table: &TTable) -> &Self
     where
         TRow: Send + Sync + Clone + 'static,
         TTable: Table<Row = TRow> + TableWithPrimaryKey<Row = TRow>,
@@ -221,7 +223,7 @@ impl<
             .entry(type_id)
             .or_insert_with(|| {
                 let (send, recv) = channel::<UpdateMessage<TRow>>();
-                app.add_message_channel(recv);
+                world.add_message_channel(recv);
                 Box::new(send)
             })
             .downcast_ref::<Sender<UpdateMessage<TRow>>>()
@@ -240,7 +242,7 @@ impl<
     }
 
     /// Register a Bevy message of type InsertUpdateMessage<TRow> for the `on_insert` and `on_update` messages on the provided table.
-    fn on_insert_update<TRow, TTable>(&self, app: &mut App, table: &TTable) -> &Self
+    fn on_insert_update<TRow, TTable>(&self, world: &mut World, table: &TTable) -> &Self
     where
         TRow: Send + Sync + Clone + 'static,
         TTable: Table<Row = TRow> + TableWithPrimaryKey<Row = TRow>,
@@ -252,7 +254,7 @@ impl<
             .entry(type_id)
             .or_insert_with(|| {
                 let (send, recv) = channel::<InsertUpdateMessage<TRow>>();
-                app.add_message_channel(recv);
+                world.add_message_channel(recv);
                 Box::new(send)
             })
             .downcast_ref::<Sender<InsertUpdateMessage<TRow>>>()

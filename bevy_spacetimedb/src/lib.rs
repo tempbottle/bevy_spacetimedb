@@ -6,10 +6,10 @@ mod aliases;
 mod channel_receiver;
 mod messages;
 mod plugin;
+mod procedures;
 mod reducers;
 mod stdb_connection;
 mod tables;
-mod procedures;
 
 pub use aliases::*;
 #[cfg(feature = "macros")]

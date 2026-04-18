@@ -16,6 +16,6 @@ spacetimedb-sdk = { workspace = true }
 bevy = { workspace = true }
 bevy_spacetimedb_macros = { version = "0.2.0", optional = true }
 
-[[example]]
-name = "bevy_spacetimedb"
-path = "../examples/bevy_spacetimedb.rs"
+#[[example]]
+#name = "bevy_spacetimedb"
+#path = "../examples/bevy_spacetimedb.rs"

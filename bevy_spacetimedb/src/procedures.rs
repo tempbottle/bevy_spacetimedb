@@ -1,5 +1,5 @@
 use crate::{AddMessageChannelAppExtensions, ProcedureResultMessage, StdbPlugin};
-use bevy::app::App;
+use bevy::prelude::World;
 use spacetimedb_sdk::__codegen as spacetime_codegen;
 use std::sync::mpsc::{Sender, channel};
 
@@ -24,14 +24,17 @@ impl<
         self,
     ) -> Self {
         // This callback manages the registration of the message.
-        let register_fn = move |app: &mut App, procedures: &C::Procedures| {
+        let register_fn = move |world: &mut World, procedures: &C::Procedures| {
             let (send, recv) = channel::<ProcedureResultMessage<E>>();
-            app.add_message_channel(recv);
+            world.add_message_channel(recv);
             E::set_stdb_callback(procedures, send);
         };
 
         // The register_fn will get called once the connection is built.
-        self.procedure_registers.lock().unwrap().push(Box::new(register_fn));
+        self.procedure_registers
+            .lock()
+            .unwrap()
+            .push(Box::new(register_fn));
 
         self
     }

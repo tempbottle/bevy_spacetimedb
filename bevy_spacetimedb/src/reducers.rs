@@ -1,5 +1,5 @@
 use crate::{AddMessageChannelAppExtensions, ReducerResultMessage, StdbPlugin};
-use bevy::app::App;
+use bevy::prelude::World;
 use spacetimedb_sdk::__codegen as spacetime_codegen;
 use std::sync::mpsc::{Sender, channel};
 
@@ -20,18 +20,19 @@ impl<
 > StdbPlugin<C, M>
 {
     /// Registers a reducer message <E> for the bevy application.
-    pub fn add_reducer<E: RegisterableReducerMessage<C, M> + Send + Sync + 'static>(
-        mut self,
-    ) -> Self {
+    pub fn add_reducer<E: RegisterableReducerMessage<C, M> + Send + Sync + 'static>(self) -> Self {
         // This callback manages the registration of the message.
-        let register_fn = move |app: &mut App, reducers: &C::Reducers| {
+        let register_fn = move |world: &mut World, reducers: &C::Reducers| {
             let (send, recv) = channel::<ReducerResultMessage<E>>();
-            app.add_message_channel(recv);
+            world.add_message_channel(recv);
             E::set_stdb_callback(reducers, send);
         };
 
         // The register_fn will get called once the connection is built.
-        self.reducer_registers.lock().unwrap().push(Box::new(register_fn));
+        self.reducer_registers
+            .lock()
+            .unwrap()
+            .push(Box::new(register_fn));
 
         self
     }

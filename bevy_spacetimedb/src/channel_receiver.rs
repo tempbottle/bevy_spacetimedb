@@ -40,3 +40,18 @@ fn channel_to_message<T: 'static + Send + Sync + Message>(
 
     writer.write_batch(messages.try_iter());
 }
+
+impl AddMessageChannelAppExtensions for World {
+    fn add_message_channel<T: Message>(&mut self, receiver: Receiver<T>) -> &mut Self {
+        if self.contains_resource::<ChannelReceiver<T>>() {
+            return self;
+        }
+        self.init_resource::<Messages<T>>();
+        self.insert_resource(ChannelReceiver(Mutex::new(receiver)));
+        let mut schedules = self.resource_mut::<Schedules>();
+        if let Some(schedule) = schedules.get_mut(PreUpdate) {
+            schedule.add_systems(channel_to_message::<T>);
+        }
+        self
+    }
+}
