@@ -224,7 +224,7 @@ impl<
     }
 
     /// Set the name or identity of the remote module.
-    pub fn with_module_name(mut self, name: impl Into<String>) -> Self {
+    pub fn with_database_name(mut self, name: impl Into<String>) -> Self {
         self.database_name = Some(name.into());
         self
     }
