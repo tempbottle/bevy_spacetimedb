@@ -1,2 +1,4 @@
 /target
 examples/stdb
+*.sh
+*.txt
