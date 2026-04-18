@@ -58,9 +58,9 @@ impl<T: DbContext> StdbConnection<T> {
     }
 
     /// Access to setters for per-reducer flags.
-    pub fn set_reducer_flags(&self) -> &T::SetReducerFlags {
+    /*pub fn set_reducer_flags(&self) -> &T::SetReducerFlags {
         self.conn.set_reducer_flags()
-    }
+    }*/
 
     /// Get the connection ID.
     pub fn connection_id(&self) -> ConnectionId {

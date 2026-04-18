@@ -73,11 +73,11 @@ pub fn connect_with_token<
     let send_connect_error = config.send_connect_error.clone();
     
     let conn = DbConnectionBuilder::<M>::new()
-        .with_module_name(config.module_name)
+        .with_database_name(config.module_name)
         .with_uri(config.uri)
         .with_token(token)
         .with_compression(config.compression)
-        .with_light_mode(config.light_mode)
+        //.with_light_mode(config.light_mode)
         .on_connect_error(move |_ctx, err| {
             send_connect_error
                 .send(StdbConnectionErrorMessage { err })
@@ -308,11 +308,11 @@ impl<
 
         // FIXME App should not crash if intial connection fails.
         let conn = DbConnectionBuilder::<M>::new()
-            .with_module_name(self.module_name.clone().unwrap())
+            .with_database_name(self.module_name.clone().unwrap())
             .with_uri(self.uri.clone().unwrap())
             .with_token(self.token.clone())
             .with_compression(self.compression.unwrap_or_default())
-            .with_light_mode(self.light_mode)
+            //.with_light_mode(self.light_mode)
             .on_connect_error(move |_ctx, err| {
                 send_connect_error
                     .send(StdbConnectionErrorMessage { err })
